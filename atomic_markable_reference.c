@@ -159,7 +159,7 @@ static PyObject *MarkableReference_compare_and_set(MarkableReference *self,
     ret = __atomic_compare_exchange(&self->object, &expect_obj, &update_obj, 0,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     ret &= __atomic_compare_exchange(&self->mark, &expect_mark, &update_mark, 0,
-            __ATOMIC_SEQ)
+            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     
     if(!ret)
         Py_DECREF(update_obj);
@@ -194,7 +194,7 @@ static PyObject *MarkableReference_attempt_mark(MarkableReference *self,
     if (!PyArg_ParseTuple(args, "cc", &expect_mark, &update_mark))
         return Py_RETURN_FALSE;
     
-    ret = __atomic_compatre_exchange(&self->mark, &expect_mark, &update_mark, 0,
+    ret = __atomic_compare_exchange(&self->mark, &expect_mark, &update_mark, 0,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     
     return PyBool_FromLong(ret);

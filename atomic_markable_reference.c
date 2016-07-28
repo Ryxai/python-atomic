@@ -3,7 +3,7 @@
 typedef struct {
     PyObject_HEAD
     PyObject *object
-    char *mark;
+    char mark;
 } MarkableReference;
 
 static int MarkableReference_init(MarkableReference *self, PyObject *args, 

@@ -3,7 +3,7 @@ import unittest
 import atomic
 
 
-class TestAtomicInteger(unittest.TestCase):
+class TestAtomicReference(unittest.TestCase):
     def test_init(self):
         o = atomic.Reference()
         self.assertIs(o.get(), None)

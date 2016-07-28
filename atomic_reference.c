@@ -31,7 +31,7 @@ static int Reference_traverse(Reference *self, visitproc visit, void *arg)
 	PyObject *object;
 
 	__atomic_load(&self->object, &object, __ATOMIC_SEQ_CST);
-
+	
 	Py_VISIT(object);
 	return 0;
 }

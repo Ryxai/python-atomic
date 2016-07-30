@@ -33,8 +33,8 @@ void initatomic(void)
 	if (PyType_Ready(&Reference_type) < 0)
 		INITERROR;
 		
-	MarkableReference.tp_new = PyType_GenericNew;
-	if(PyType_Ready(&MarkableReference) < 0)
+	MarkableReference_type.tp_new = PyType_GenericNew;
+	if(PyType_Ready(&MarkableReference_type) < 0)
 		INITERROR;
 
 #if PY_MAJOR_VERSION >= 3
@@ -51,8 +51,8 @@ void initatomic(void)
 	Py_INCREF(&Reference_type);
 	PyModule_AddObject(m, "Reference", (PyObject *)&Reference_type);
 	
-	Py_INCREF(&MarkableReference_Type);
-	PyModule_AddObject(m, "MarkableReference", (PyObject *)&MarkableReference);
+	Py_INCREF(&MarkableReference_type);
+	PyModule_AddObject(m, "MarkableReference", (PyObject *)&MarkableReference_type);
 
 #if PY_MAJOR_VERSION >= 3
 	return m;

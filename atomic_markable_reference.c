@@ -2,7 +2,7 @@
 
 typedef struct {
     PyObject_HEAD
-    PyObject *object
+    PyObject *object;
     char mark;
 } MarkableReference;
 
@@ -36,7 +36,7 @@ static int MarkableReference_traverse(MarkableReference *self,
 {
     PyObject *object;
         
-    __atomic_load(&self->object, &object, __ATOMIC_SEQ_CST)
+    __atomic_load(&self->object, &object, __ATOMIC_SEQ_CST);
         
     Py_VISIT(object);
         
@@ -47,10 +47,9 @@ static int MarkableReference_traverse(MarkableReference *self,
 static int MarkableReference_clear(MarkableReference *self)
 {
     PyObject *object;
-    char mark;
         
     object = __atomic_exchange_n(&self->object, NULL, __ATOMIC_SEQ_CST);
-    mark = __atomic_exchange_n(&self->mark, 0, __ATOMIC_SEQ_CST);
+    __atomic_exchange_n(&self->mark, 0, __ATOMIC_SEQ_CST);
         
     Py_XDECREF(object);
     
@@ -88,30 +87,41 @@ static PyObject *MarkableReference_get_reference(MarkableReference *self)
 
 static PyObject *MarkableReference_is_marked(MarkableReference *self)
 {
-    if (0x01 & self->mark)
-        return Py_RETURN_TRUE
-    return Py_RETURN_FALSE
+    if (0x01 & self->mark) 
+    {
+        Py_RETURN_TRUE;
+    }
+    Py_RETURN_FALSE;
 }
 
 static PyObject *MarkableReference_get(MarkableReference *self, 
     PyObject *args)
 {
-    PyListObject *markholder;
-    if (!PyArg_ParseTuple(args, "O", (PyListObject *)&markholder))
+    PyObject *markholder;
+    if (!PyArg_ParseTuple(args, "O",&markholder))
         return NULL;
     
-    PyObject *object;
+    PyObject *object, *converted_mark;
     char mark;
         
     __atomic_load(&self->object, &object, __ATOMIC_SEQ_CST);
     __atomic_load(&self->mark, &mark, __ATOMIC_SEQ_CST);
     
+    if (mark & 0x01){
+        converted_mark = Py_True;
+        Py_INCREF(Py_True);
+    }
+    else{
+        converted_mark = Py_False;
+        Py_INCREF(Py_False);
+    }
+    
     if(!PyList_Size(markholder)) {
-        PyList_Append(markholder, mark);
+        PyList_Append(markholder, converted_mark);
         //No DECREF due to char
     }
     else
-        PyList_SetItem(markholder, 0, mark);
+        PyList_SetItem(markholder, 0, converted_mark);
         
     //Do not need to increase reference count for markholder since it was
     //created externally to the _get function
@@ -128,17 +138,17 @@ static PyObject *MarkableReference_weak_compare_and_set(MarkableReference *self,
     
     if(!PyArg_ParseTuple(args, "OOcc", &expect_obj, &update_obj,
         &expect_mark, &update_mark))
-        return Py_RETURN_FALSE;
+        Py_RETURN_FALSE;
     
     Py_INCREF(&update_obj);
     
     ret = __atomic_compare_exchange(&self->object, &expect_obj, &update_obj, 1,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
-    ret &= __atomic_compate_exchange(&self->mark, &expect_mark, &update_mark, 1,
+    ret &= __atomic_compare_exchange(&self->mark, &expect_mark, &update_mark, 1,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     
     if (!ret)
-        Py_DECREF(update);
+        Py_DECREF(update_obj);
     Py_DECREF(expect_obj);
     return PyBool_FromLong(ret);
 }
@@ -152,7 +162,7 @@ static PyObject *MarkableReference_compare_and_set(MarkableReference *self,
     
     if(!PyArg_ParseTuple(args, "OOcc", &expect_obj, &update_obj, &expect_mark,
             &update_mark))
-        return Py_RETURN_FALSE;
+        Py_RETURN_FALSE;
     
     Py_INCREF(update_obj);
     
@@ -192,7 +202,7 @@ static PyObject *MarkableReference_attempt_mark(MarkableReference *self,
     long ret;
     
     if (!PyArg_ParseTuple(args, "cc", &expect_mark, &update_mark))
-        return Py_RETURN_FALSE;
+        Py_RETURN_FALSE;
     
     ret = __atomic_compare_exchange(&self->mark, &expect_mark, &update_mark, 0,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
@@ -246,8 +256,8 @@ static PyMethodDef MarkableReference_methods[] = {
         
 PyTypeObject MarkableReference_type = {
     PyVarObject_HEAD_INIT(NULL, 0)
-    "atomic.MarkableReference"   /* tp_name */
-    sizeof(MarkableReference)    /* tp_basicsize */
+    "atomic.MarkableReference",  /* tp_name */
+    sizeof(MarkableReference),   /* tp_basicsize */
     0,      /*tp_itemsize */
     (destructor)MarkableReference_dealloc, /* tp_dealloc */ 
     NULL,                       /* tp_print */
@@ -264,7 +274,7 @@ PyTypeObject MarkableReference_type = {
 	NULL,					/* tp_getattro */
 	NULL,					/* tp_setattro */
 	NULL,					/* tp_as_buffer */
-	Py_TPFLAGS_DEFAULT      /* tp_flags */
+	Py_TPFLAGS_DEFAULT,     /* tp_flags */
 	ATOMIC_MARKABLE_REFERENCE_DOCSTRING, /* tp_doc */
 	(traverseproc)MarkableReference_traverse,   /* tp_traverse */
 	(inquiry)MarkableReference_clear,       /* tp_clear */
@@ -281,5 +291,5 @@ PyTypeObject MarkableReference_type = {
 	NULL,					/* tp_descr_set */
 	0,					/* tp_dictoffset */
 	(initproc)MarkableReference_init,		/* tp_init */
-}
+};
 

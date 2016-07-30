@@ -10,6 +10,8 @@ static int MarkableReference_init(MarkableReference *self, PyObject *args,
     PyObject *kwds) 
 {
         static char *kwlist[] = {"obj", "mark", NULL};
+        PyObject *mark_as_pybool;
+        char mark;
         
         if (!__atomic_is_lock_free(sizeof(self->object), &self->object) &&
                 !__atomic_is_lock_free(sizeof(self->mark), &self->mark))
@@ -22,9 +24,16 @@ static int MarkableReference_init(MarkableReference *self, PyObject *args,
         self->object = Py_None;
         self->mark = 0;
         
-        if(!PyArg_ParseTupleAndKeywords(args, kwds, "|Oc", kwlist, 
-                &self->object, &self->mark))
+        if(!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, 
+                &self->object, &mark_as_pybool))
             return -1;
+        if(!PyBool_Check(mark_as_pybool))
+            return -1;
+        if (mark_as_pybool == Py_True)
+            mark = 1;
+        else 
+            mark = 0;
+        __atomic_load(&self->mark, &mark, __ATOMIC_SEQ_CST);
             
         Py_INCREF(self->object);
         
@@ -215,7 +224,7 @@ static PyMethodDef MarkableReference_methods[] = {
    {"getReference", (PyCFunction)MarkableReference_get_reference, METH_NOARGS,
     "getReference() -> object\n\n"
     "Atomically load and return the stored reference."},
-   {"isMarked", (PyCFunction)MarkableReference_is_marked, METH_NOARGS,
+   {"is_marked", (PyCFunction)MarkableReference_is_marked, METH_NOARGS,
     "isMarked() -> bool\n\n"
     "Atomically loads and returns the given mark."},
    {"get", (PyCFunction)MarkableReference_get, METH_NOARGS,

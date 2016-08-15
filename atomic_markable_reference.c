@@ -1,5 +1,22 @@
 #include <Python.h>
-
+#define PyBool_ExcCheck(bool, message) if (!PyBool_Check(bool)) \
+    { \
+        PyErr_SetString(PyExc_TypeError, message); \
+        return NULL; \
+    }
+#define PyBool_ConvertChar(bool, chr) chr = (bool == Py_True); \
+    if (bool == Py_True) \
+        Py_XDECREF(Py_True); \
+    else \
+        Py_XDECREF(Py_False);
+#define PyBool_Decref(bool) if (bool == Py_True) \
+    Py_XDECREF(Py_True); \
+    else \
+        Py_XDECREF(Py_False);
+    
+        
+        
+    
 typedef struct {
     PyObject_HEAD
     PyObject *object;
@@ -23,20 +40,19 @@ static int MarkableReference_init(MarkableReference *self, PyObject *args,
         
         self->object = Py_None;
         self->mark = 0;
+        mark_as_pybool = Py_False;
+        Py_INCREF(Py_False);
         
         if(!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, 
                 &self->object, &mark_as_pybool))
             return -1;
         if(!PyBool_Check(mark_as_pybool))
             return -1;
-        if (mark_as_pybool == Py_True)
-            mark = 1;
-        else 
-            mark = 0;
-        __atomic_load(&self->mark, &mark, __ATOMIC_SEQ_CST);
+        PyBool_ConvertChar(mark_as_pybool, mark);
+        __atomic_store(&self->mark, &mark, __ATOMIC_SEQ_CST);
             
         Py_INCREF(self->object);
-        
+        Py_DECREF(Py_False);
         return 0;
 }
     
@@ -52,7 +68,7 @@ static int MarkableReference_traverse(MarkableReference *self,
     return 0;
         
 }
-    
+
 static int MarkableReference_clear(MarkableReference *self)
 {
     PyObject *object;
@@ -96,27 +112,24 @@ static PyObject *MarkableReference_get_reference(MarkableReference *self)
 
 static PyObject *MarkableReference_is_marked(MarkableReference *self)
 {
-    if (0x01 & self->mark) 
+    char mark;
+    __atomic_load(&self->mark, &mark, __ATOMIC_SEQ_CST);
+    if (mark) 
     {
         Py_RETURN_TRUE;
     }
     Py_RETURN_FALSE;
 }
 
-static PyObject *MarkableReference_get(MarkableReference *self, 
-    PyObject *args)
+static PyObject *MarkableReference_get(MarkableReference *self)
 {
-    PyObject *markholder;
-    if (!PyArg_ParseTuple(args, "O",&markholder))
-        return NULL;
-    
     PyObject *object, *converted_mark;
     char mark;
         
     __atomic_load(&self->object, &object, __ATOMIC_SEQ_CST);
     __atomic_load(&self->mark, &mark, __ATOMIC_SEQ_CST);
     
-    if (mark & 0x01){
+    if (mark){
         converted_mark = Py_True;
         Py_INCREF(Py_True);
     }
@@ -124,31 +137,33 @@ static PyObject *MarkableReference_get(MarkableReference *self,
         converted_mark = Py_False;
         Py_INCREF(Py_False);
     }
-    
-    if(!PyList_Size(markholder)) {
-        PyList_Append(markholder, converted_mark);
-        //No DECREF due to char
-    }
-    else
-        PyList_SetItem(markholder, 0, converted_mark);
-        
-    //Do not need to increase reference count for markholder since it was
-    //created externally to the _get function
+    PyObject *output_tuple = PyTuple_New(2);
     Py_INCREF(object);
+    if(!(PyTuple_SetItem(output_tuple, 0, object) &&
+        PyTuple_SetItem(output_tuple, 0, converted_mark))) {
+        printf("Fail");
+        PyBool_Decref(converted_mark);
+        Py_DECREF(object);
+        return NULL;
+    }
     return object;
 }
 
 static PyObject *MarkableReference_weak_compare_and_set(MarkableReference *self,
         PyObject *args) 
 {
-    PyObject *expect_obj, *update_obj;
+    PyObject *expect_obj, *update_obj, *exp_mark_as_pybool, *upd_mark_as_pybool;
     char expect_mark, update_mark;
     long ret;
     
-    if(!PyArg_ParseTuple(args, "OOcc", &expect_obj, &update_obj,
-        &expect_mark, &update_mark))
-        Py_RETURN_FALSE;
+    if(!PyArg_ParseTuple(args, "OOOO", &expect_obj, &update_obj,
+        &exp_mark_as_pybool, &upd_mark_as_pybool))
+        return NULL;
     
+    PyBool_ExcCheck(exp_mark_as_pybool, "Expected mark is not a boolean")
+    PyBool_ExcCheck(upd_mark_as_pybool, "Update mark is not a booean")
+    PyBool_ConvertChar(exp_mark_as_pybool, expect_mark);
+    PyBool_ConvertChar(upd_mark_as_pybool, update_mark);
     Py_INCREF(&update_obj);
     
     ret = __atomic_compare_exchange(&self->object, &expect_obj, &update_obj, 1,
@@ -158,22 +173,26 @@ static PyObject *MarkableReference_weak_compare_and_set(MarkableReference *self,
     
     if (!ret)
         Py_DECREF(update_obj);
-    Py_DECREF(expect_obj);
     return PyBool_FromLong(ret);
 }
 
 static PyObject *MarkableReference_compare_and_set(MarkableReference *self, 
         PyObject *args)
 {
-    PyObject *expect_obj, *update_obj;
+    PyObject *expect_obj, *update_obj, *exp_mark_as_pybool, *upd_mark_as_pybool;
     char expect_mark, update_mark;
     long ret;
     
-    if(!PyArg_ParseTuple(args, "OOcc", &expect_obj, &update_obj, &expect_mark,
-            &update_mark))
-        Py_RETURN_FALSE;
+    if(!PyArg_ParseTuple(args, "OOOO", &expect_obj, &update_obj, 
+        &exp_mark_as_pybool, &upd_mark_as_pybool))
+            return NULL;
     
     Py_INCREF(update_obj);
+    
+    PyBool_ExcCheck(exp_mark_as_pybool, "Expected mark is not a boolean")
+    PyBool_ExcCheck(upd_mark_as_pybool, "Update mark is not a boolean")
+    PyBool_ConvertChar(exp_mark_as_pybool, expect_mark);
+    PyBool_ConvertChar(upd_mark_as_pybool, update_mark);
     
     ret = __atomic_compare_exchange(&self->object, &expect_obj, &update_obj, 0,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
@@ -188,12 +207,14 @@ static PyObject *MarkableReference_compare_and_set(MarkableReference *self,
     
 static PyObject *MarkableReference_set(MarkableReference *self, PyObject *args)
 {
-    PyObject *object, *old_object;
+    PyObject *object, *old_object, *mark_as_pybool;
     char mark, old_mark;
     
-    if (!PyArg_ParseTuple(args, "Oc", &object, &mark))
+    if (!PyArg_ParseTuple(args, "OO", &object, &mark_as_pybool))
         return NULL;
     
+    PyBool_ExcCheck(mark_as_pybool, "Mark is not a boolean")
+    PyBool_ConvertChar(mark_as_pybool, mark);
     Py_INCREF(object);
     
     __atomic_exchange(&self->object, &object, &old_object, __ATOMIC_SEQ_CST);
@@ -206,12 +227,17 @@ static PyObject *MarkableReference_set(MarkableReference *self, PyObject *args)
 static PyObject *MarkableReference_attempt_mark(MarkableReference *self, 
     PyObject *args)
 {
-    
+    PyObject *exp_mark_as_pybool, *upd_mark_as_pybool;
     char expect_mark, update_mark;
     long ret;
     
-    if (!PyArg_ParseTuple(args, "cc", &expect_mark, &update_mark))
-        Py_RETURN_FALSE;
+    if (!PyArg_ParseTuple(args, "OO", &exp_mark_as_pybool, &upd_mark_as_pybool))
+        return NULL;
+    
+    PyBool_ExcCheck(exp_mark_as_pybool, "Expected mark is not a boolean")
+    PyBool_ExcCheck(upd_mark_as_pybool, "Update mark is not a boolean")
+    PyBool_ConvertChar(exp_mark_as_pybool, expect_mark);
+    PyBool_ConvertChar(upd_mark_as_pybool, update_mark);
     
     ret = __atomic_compare_exchange(&self->mark, &expect_mark, &update_mark, 0,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
@@ -221,11 +247,11 @@ static PyObject *MarkableReference_attempt_mark(MarkableReference *self,
 }
 
 static PyMethodDef MarkableReference_methods[] = {
-   {"getReference", (PyCFunction)MarkableReference_get_reference, METH_NOARGS,
-    "getReference() -> object\n\n"
+   {"get_reference", (PyCFunction)MarkableReference_get_reference, METH_NOARGS,
+    "get_reference() -> object\n\n"
     "Atomically load and return the stored reference."},
    {"is_marked", (PyCFunction)MarkableReference_is_marked, METH_NOARGS,
-    "isMarked() -> bool\n\n"
+    "is_marked() -> bool\n\n"
     "Atomically loads and returns the given mark."},
    {"get", (PyCFunction)MarkableReference_get, METH_NOARGS,
     "get(markholder) -> object \n\n"

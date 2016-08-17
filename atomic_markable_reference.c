@@ -11,11 +11,12 @@
         Py_XDECREF(Py_False);
 #define PyBool_Decref(bool) if (bool == Py_True) \
     Py_XDECREF(Py_True); \
-    else \
-        Py_XDECREF(Py_False);
-    
-        
-        
+else \
+    Py_XDECREF(Py_False);
+#define PyBool_Incref(bool) if (bool == Py_True) \
+    Py_INCREF(Py_True); \
+else \
+    Py_INCREF(Py_False);
     
 typedef struct {
     PyObject_HEAD
@@ -141,12 +142,12 @@ static PyObject *MarkableReference_get(MarkableReference *self)
     }
     PyObject *output_tuple = PyTuple_New(2);
     if (PyTuple_SetItem(output_tuple, 0, object) != 0) {
-        PyErr_SetString(PyExc_ValueError, "Cannot return internal reference" +
+        PyErr_SetString(PyExc_ValueError, "Cannot return internal reference"
         "due to inability to insert in return tuple");
         return NULL;
     }
     if (PyTuple_SetItem(output_tuple, 1, converted_mark) != 0) {
-        PyErr_SetString(PyExc_ValueError, "Cannot return mark due to" +
+        PyErr_SetString(PyExc_ValueError, "Cannot return mark due to" 
         "inability to insert into return tuple");
         return NULL;
     }
@@ -164,11 +165,13 @@ static PyObject *MarkableReference_weak_compare_and_set(MarkableReference *self,
         &exp_mark_as_pybool, &upd_mark_as_pybool))
         return NULL;
     
+    PyBool_Incref(exp_mark_as_pybool)
+    PyBool_Incref(upd_mark_as_pybool)
     PyBool_ExcCheck(exp_mark_as_pybool, "Expected mark is not a boolean")
     PyBool_ExcCheck(upd_mark_as_pybool, "Update mark is not a booean")
     PyBool_ConvertChar(exp_mark_as_pybool, expect_mark);
     PyBool_ConvertChar(upd_mark_as_pybool, update_mark);
-    Py_INCREF(&update_obj);
+    Py_INCREF(update_obj);
     
     ret = __atomic_compare_exchange(&self->object, &expect_obj, &update_obj, 1,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
@@ -193,6 +196,8 @@ static PyObject *MarkableReference_compare_and_set(MarkableReference *self,
     
     Py_INCREF(update_obj);
     
+    PyBool_Incref(upd_mark_as_pybool)
+    PyBool_Incref(exp_mark_as_pybool)
     PyBool_ExcCheck(exp_mark_as_pybool, "Expected mark is not a boolean")
     PyBool_ExcCheck(upd_mark_as_pybool, "Update mark is not a boolean")
     PyBool_ConvertChar(exp_mark_as_pybool, expect_mark);
@@ -205,7 +210,6 @@ static PyObject *MarkableReference_compare_and_set(MarkableReference *self,
     
     if(!ret)
         Py_DECREF(update_obj);
-    Py_DECREF(expect_obj);
     return PyBool_FromLong(ret);
 }
     
@@ -224,7 +228,7 @@ static PyObject *MarkableReference_set(MarkableReference *self, PyObject *args)
     __atomic_exchange(&self->object, &object, &old_object, __ATOMIC_SEQ_CST);
     __atomic_exchange(&self->mark, &mark, &old_mark, __ATOMIC_SEQ_CST);
     
-    Py_DECREF(old_object);
+    Py_XDECREF(old_object);
     Py_RETURN_NONE;
 }
 

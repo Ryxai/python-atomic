@@ -45,9 +45,12 @@ static int MarkableReference_init(MarkableReference *self, PyObject *args,
         
         if(!PyArg_ParseTupleAndKeywords(args, kwds, "|OO", kwlist, 
                 &self->object, &mark_as_pybool))
-            return -1;
+            return -1; 
         if(!PyBool_Check(mark_as_pybool))
+        {
+            PyErr_SetString(PyExc_TypeError, "Passed mark is not a boolean");
             return -1;
+        }
         PyBool_ConvertChar(mark_as_pybool, mark);
         __atomic_store(&self->mark, &mark, __ATOMIC_SEQ_CST);
             
@@ -66,7 +69,6 @@ static int MarkableReference_traverse(MarkableReference *self,
     Py_VISIT(object);
         
     return 0;
-        
 }
 
 static int MarkableReference_clear(MarkableReference *self)
@@ -138,15 +140,11 @@ static PyObject *MarkableReference_get(MarkableReference *self)
         Py_INCREF(Py_False);
     }
     PyObject *output_tuple = PyTuple_New(2);
-    Py_INCREF(object);
-    if(!(PyTuple_SetItem(output_tuple, 0, object) &&
-        PyTuple_SetItem(output_tuple, 0, converted_mark))) {
-        printf("Fail");
-        PyBool_Decref(converted_mark);
-        Py_DECREF(object);
+    if (PyTuple_SetItem(output_tuple, 0, object) != 0)
         return NULL;
-    }
-    return object;
+    if (PyTuple_SetItem(output_tuple, 1, converted_mark) != 0)
+        return NULL;
+    return output_tuple;
 }
 
 static PyObject *MarkableReference_weak_compare_and_set(MarkableReference *self,

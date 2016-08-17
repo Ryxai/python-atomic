@@ -140,10 +140,16 @@ static PyObject *MarkableReference_get(MarkableReference *self)
         Py_INCREF(Py_False);
     }
     PyObject *output_tuple = PyTuple_New(2);
-    if (PyTuple_SetItem(output_tuple, 0, object) != 0)
+    if (PyTuple_SetItem(output_tuple, 0, object) != 0) {
+        PyErr_SetString(PyExc_ValueError, "Cannot return internal reference" +
+        "due to inability to insert in return tuple");
         return NULL;
-    if (PyTuple_SetItem(output_tuple, 1, converted_mark) != 0)
+    }
+    if (PyTuple_SetItem(output_tuple, 1, converted_mark) != 0) {
+        PyErr_SetString(PyExc_ValueError, "Cannot return mark due to" +
+        "inability to insert into return tuple");
         return NULL;
+    }
     return output_tuple;
 }
 
@@ -241,7 +247,6 @@ static PyObject *MarkableReference_attempt_mark(MarkableReference *self,
             __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
     
     return PyBool_FromLong(ret);
-    
 }
 
 static PyMethodDef MarkableReference_methods[] = {

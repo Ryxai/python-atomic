@@ -257,9 +257,8 @@ static PyMethodDef MarkableReference_methods[] = {
     "is_marked() -> bool\n\n"
     "Atomically loads and returns the given mark."},
    {"get", (PyCFunction)MarkableReference_get, METH_NOARGS,
-    "get(markholder) -> object \n\n"
-    "Returns the current values of both the reference and the mark. Typical"
-    "usage is a bool list. reference = markable.get(markholder)."
+    "get() -> (object, mark) \n\n"
+    "Returns the current values of both the reference and the mark. "
    },
    {"weak_compare_and_set", (PyCFunction)MarkableReference_weak_compare_and_set,
     METH_VARARGS, "weak_compare_and_set(expect_ref, update_ref, expect_mark,"
